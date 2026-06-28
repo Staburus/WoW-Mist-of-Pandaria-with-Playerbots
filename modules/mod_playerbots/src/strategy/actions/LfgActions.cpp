@@ -133,15 +133,7 @@ bool LfgJoinAction::JoinLFG()
 
     std::vector<uint32> dungeons = sRandomPlayerbotMgr->LfgDungeons[bot->GetTeamId()];
     if (dungeons.empty())
-    {
-        static time_t lastLfgLog = 0;
-        if (time(nullptr) > lastLfgLog + 60)
-        {
-            lastLfgLog = time(nullptr);
-            TC_LOG_INFO("playerbots", "LfgJoinAction: LfgDungeons empty for team %u - no real player in LFG queue", bot->GetTeamId());
-        }
         return false;
-    }
 
     uint8 const botLevel = bot->GetLevel();
     for (uint32 dungeonId : dungeons)
@@ -228,9 +220,6 @@ bool LfgAcceptAction::Execute(Event event)
     if (id)
     {
         bool accept = !(bot->IsInCombat() || bot->isDead());
-        TC_LOG_INFO("playerbots", "Bot {} <{}>: LFG proposal %u - %s (combat:%d dead:%d)",
-            bot->GetGUID().ToString().c_str(), bot->GetName().c_str(), id,
-            accept ? "ACCEPTING" : "DECLINING", bot->IsInCombat(), bot->isDead());
         acceptProposal(id, accept);
         return true;
     }
@@ -242,9 +231,6 @@ bool LfgAcceptAction::Execute(Event event)
         if (ParseLfgProposalId(p, proposalId) && proposalId)
         {
             bool accept = !(bot->IsInCombat() || bot->isDead());
-            TC_LOG_INFO("playerbots", "Bot {} <{}>: LFG proposal %u (packet) - %s",
-                bot->GetGUID().ToString().c_str(), bot->GetName().c_str(), proposalId,
-                accept ? "ACCEPTING" : "DECLINING");
             acceptProposal(proposalId, accept);
             return true;
         }

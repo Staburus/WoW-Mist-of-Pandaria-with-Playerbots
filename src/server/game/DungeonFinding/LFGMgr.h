@@ -432,8 +432,6 @@ class LFGMgr
         void RemoveGroupQueues(ObjectGuid guid);
         // Leaves lfg
         void LeaveLfg(ObjectGuid guid, uint32 queuId);
-        // Find active proposal ID for a player (returns 0 if none)
-        uint32 GetActiveProposalId(ObjectGuid guid);
 
         // LfgQueue
         LfgQueueManagerContainer const& GetQueueManagers() const { return QueueManagers; }

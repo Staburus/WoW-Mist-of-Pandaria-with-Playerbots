@@ -23,11 +23,6 @@ Category: commandscripts
 EndScriptData */
 
 #include "AccountMgr.h"
-#ifdef PLAYERBOTS
-#include "BotFactory.h"
-#include "Playerbots.h"
-#include "RandomPlayerbotMgr.h"
-#endif
 #include "Chat.h"
 #include "ObjectMgr.h"
 #include "PlayerDump.h"
@@ -256,14 +251,6 @@ public:
             player->GiveLevel(newLevel);
             player->InitTalentForLevel();
             player->SetUInt32Value(PLAYER_FIELD_XP, 0);
-
-#ifdef PLAYERBOTS
-            if (GET_PLAYERBOT_AI(player) && sRandomPlayerbotMgr->IsRandomBot(player))
-            {
-                BotFactory factory(player, newLevel);
-                factory.InitEquipment(true);
-            }
-#endif
 
             if (handler->needReportToTarget(player))
             {

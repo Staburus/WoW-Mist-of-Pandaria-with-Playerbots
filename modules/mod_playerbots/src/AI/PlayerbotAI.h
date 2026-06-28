@@ -146,7 +146,7 @@ public:
     WorldObject* GetWorldObject(ObjectGuid guid);
     AiObjectContext* GetAiObjectContext() { return _aiObjectContext; }
     BotState GetState() { return _currentState; };
-    NewRpgInfo& GetRpgInfo() { return _rpgInfo; }
+    const NewRpgInfo& GetRpgInfo() { return _rpgInfo; }
     float GetRange(std::string const type);
 
     bool IsOpposing(Player* player);

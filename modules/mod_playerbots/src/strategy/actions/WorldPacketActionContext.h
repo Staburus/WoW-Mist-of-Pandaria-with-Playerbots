@@ -10,7 +10,6 @@
 #include "NamedObjectContext.h"
 
 #include "AcceptInvitationAction.h"
-#include "BattleGroundJoinAction.h"
 #include "LfgActions.h"
 #include "ReleaseSpiritAction.h"
 #include "ReviveFromCorpseAction.h"
@@ -37,10 +36,6 @@ public:
         creators["lfg accept"] = &WorldPacketActionContext::lfg_accept;
         creators["lfg role check"] = &WorldPacketActionContext::lfg_role_check;
         creators["lfg join"] = &WorldPacketActionContext::lfg_join;
-
-        creators["bg join"] = &WorldPacketActionContext::bg_join;
-        creators["bg leave"] = &WorldPacketActionContext::bg_leave;
-        creators["bg status check"] = &WorldPacketActionContext::bg_status_check;
     }
 
 private:
@@ -56,10 +51,6 @@ private:
     static Action* lfg_accept(PlayerbotAI* botAI) { return new LfgAcceptAction(botAI); }
     static Action* lfg_role_check(PlayerbotAI* botAI) { return new LfgRoleCheckAction(botAI); }
     static Action* lfg_join(PlayerbotAI* botAI) { return new LfgJoinAction(botAI); }
-
-    static Action* bg_join(PlayerbotAI* botAI) { return new BGJoinAction(botAI); }
-    static Action* bg_leave(PlayerbotAI* botAI) { return new BGLeaveAction(botAI); }
-    static Action* bg_status_check(PlayerbotAI* botAI) { return new BGStatusCheckAction(botAI); }
 };
 
 #endif

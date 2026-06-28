@@ -165,8 +165,10 @@ void GenericDKStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     MeleeCombatStrategy::InitTriggers(triggers);
 
-    triggers.push_back(new TriggerNode("high aoe", NextAction::array(0, new NextAction("anti magic shell", ACTION_NORMAL + 3), nullptr)));
-    triggers.push_back(new TriggerNode("critical aoe heal", NextAction::array(0, new NextAction("anti magic zone", ACTION_EMERGENCY + 1), nullptr)));
+    // triggers.push_back(new TriggerNode("high aoe", NextAction::array(0, new NextAction("anti magic shell",
+    // ACTION_NORMAL + 3), nullptr))); triggers.push_back(new TriggerNode("death coil", NextAction::array(0, new
+    // NextAction("death coil", ACTION_NORMAL + 3), nullptr))); triggers.push_back(new TriggerNode("critical aoe heal",
+    // NextAction::array(0, new NextAction("anti magic zone", ACTION_EMERGENCY + 1), nullptr)));
     triggers.push_back(
         new TriggerNode("no pet", NextAction::array(0, new NextAction("raise dead", ACTION_NORMAL + 5), nullptr)));
     triggers.push_back(

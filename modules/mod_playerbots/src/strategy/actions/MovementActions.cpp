@@ -1274,10 +1274,9 @@ bool CombatFormationMoveAction::Execute(Event event)
     Player* playerToLeave = NearestGroupMember(dis);
     if (playerToLeave && bot->GetExactDist(playerToLeave) < dis)
     {
-        if (FleePosition(playerToLeave->GetPosition(), dis))
+        //if (FleePosition(playerToLeave->GetPosition(), dis))
         {
-            lastMoveTimer = getMSTime();
-            return true;
+            //lastMoveTimer = getMSTime();
         }
     }
     return false;
@@ -1312,10 +1311,7 @@ Position CombatFormationMoveAction::AverageGroupPos(float dis, bool ranged, bool
         averageX += member->GetPositionX();
         averageY += member->GetPositionY();
         averageZ += member->GetPositionZ();
-        cnt++;
     }
-    if (cnt == 0)
-        return Position();
     averageX /= cnt;
     averageY /= cnt;
     averageZ /= cnt;

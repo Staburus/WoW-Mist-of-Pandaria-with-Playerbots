@@ -11,7 +11,6 @@
 #include "GenericTriggers.h"
 #include "HealthTriggers.h"
 #include "LfgTriggers.h"
-#include "PvpTriggers.h"
 #include "RangeTriggers.h"
 
 class PlayerbotAI;
@@ -101,11 +100,6 @@ public:
         creators["protect party member"] = &TriggerContext::protect_party_member;
 
         creators["lfg proposal active"] = &TriggerContext::lfg_proposal_active;
-
-        creators["bg invite active"] = &TriggerContext::bg_invite_active;
-        creators["bg active"] = &TriggerContext::bg_active;
-        creators["bg waiting"] = &TriggerContext::bg_waiting;
-        creators["player wants in bg"] = &TriggerContext::player_wants_in_bg;
     }
 
 private:
@@ -187,11 +181,6 @@ private:
 
     static Trigger* protect_party_member(PlayerbotAI* botAI) { return new ProtectPartyMemberTrigger(botAI); }
     static Trigger* lfg_proposal_active(PlayerbotAI* botAI) { return new LfgProposalActiveTrigger(botAI); }
-
-    static Trigger* bg_invite_active(PlayerbotAI* botAI) { return new BgInviteActiveTrigger(botAI); }
-    static Trigger* bg_active(PlayerbotAI* botAI) { return new BgActiveTrigger(botAI); }
-    static Trigger* bg_waiting(PlayerbotAI* botAI) { return new BgWaitingTrigger(botAI); }
-    static Trigger* player_wants_in_bg(PlayerbotAI* botAI) { return new PlayerWantsInBattlegroundTrigger(botAI); }
 };
 
 #endif

@@ -3,5 +3,5 @@
 
 bool NewRpgStatusTrigger::IsActive()
 {
-	return status == botAI->GetRpgInfo().status;
+	return false; /*status == botAI->rpgInfo.status;*/
 }

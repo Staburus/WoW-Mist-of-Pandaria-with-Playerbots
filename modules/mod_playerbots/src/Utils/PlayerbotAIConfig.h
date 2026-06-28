@@ -56,15 +56,6 @@ public:
 
     uint32 openGoSpell;
     bool randomBotAutologin, disableRandomLevels, randomBotJoinLfg;
-    bool randomBotJoinBG, randomBotAutoJoinBG;
-
-    uint32 randomBotAutoJoinBGAVCount, randomBotAutoJoinBGWSCount, randomBotAutoJoinBGABCount;
-    uint32 randomBotAutoJoinBGEYCount, randomBotAutoJoinBGSACount, randomBotAutoJoinBGICCount;
-    uint32 randomBotAutoJoinBGTPCount, randomBotAutoJoinBGBFGCount;
-    uint32 randomBotAutoJoinBGTOKCount, randomBotAutoJoinBGSMCount, randomBotAutoJoinBGDGCount;
-
-    uint32 randomBotAutoJoinArena2v2Count, randomBotAutoJoinArena3v3Count, randomBotAutoJoinArena5v5Count;
-
     uint32 randomBotMaxLevel, randomBotMinLevel;
     float randomBotMaxLevelChance;
     uint32 minRandomBots, maxRandomBots, maxAddedBotsPerClass, maxAddedBots;

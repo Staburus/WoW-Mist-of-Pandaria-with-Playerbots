@@ -137,24 +137,6 @@ bool PlayerbotAIConfig::Initialize()
  
     randomBotAutologin = sConfigMgr->GetBoolDefault("AiPlayerbot.RandomBotAutologin", true);
     randomBotJoinLfg = sConfigMgr->GetBoolDefault("AiPlayerbot.RandomBotJoinLfg", true);
-    randomBotJoinBG = sConfigMgr->GetBoolDefault("AiPlayerbot.RandomBotJoinBG", true);
-    randomBotAutoJoinBG = sConfigMgr->GetBoolDefault("AiPlayerbot.RandomBotAutoJoinBG", false);
-
-    randomBotAutoJoinBGAVCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGAVCount", 0);
-    randomBotAutoJoinBGWSCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGWSCount", 1);
-    randomBotAutoJoinBGABCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGABCount", 1);
-    randomBotAutoJoinBGEYCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGEYCount", 1);
-    randomBotAutoJoinBGSACount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGSACount", 0);
-    randomBotAutoJoinBGICCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGICCount", 0);
-    randomBotAutoJoinBGTPCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGTPCount", 1);
-    randomBotAutoJoinBGBFGCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGBFGCount", 1);
-    randomBotAutoJoinBGTOKCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGTOKCount", 1);
-    randomBotAutoJoinBGSMCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGSMCount", 1);
-    randomBotAutoJoinBGDGCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinBGDGCount", 1);
-
-    randomBotAutoJoinArena2v2Count = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinArena2v2Count", 0);
-    randomBotAutoJoinArena3v3Count = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinArena3v3Count", 0);
-    randomBotAutoJoinArena5v5Count = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAutoJoinArena5v5Count", 0);
     randomBotAccountPrefix = sConfigMgr->GetStringDefault("AiPlayerbot.RandomBotAccountPrefix", "rndbot");
     randomBotAccountCount = sConfigMgr->GetIntDefault("AiPlayerbot.RandomBotAccountCount", 200);
     maxAddedBotsPerClass = sConfigMgr->GetIntDefault("AiPlayerbot.MaxAddedBotsPerClass", 50);

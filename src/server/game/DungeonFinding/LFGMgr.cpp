@@ -840,17 +840,6 @@ void LFGMgr::RemoveGroupQueues(ObjectGuid guid)
 
    @param[in]     guid Player or group guid
 */
-uint32 LFGMgr::GetActiveProposalId(ObjectGuid guid)
-{
-    for (auto const& pair : ProposalsStore)
-    {
-        auto it = pair.second.players.find(guid);
-        if (it != pair.second.players.end())
-            return pair.first;
-    }
-    return 0;
-}
-
 void LFGMgr::LeaveLfg(ObjectGuid guid, uint32 queueId)
 {
     TC_LOG_DEBUG("lfg", "LFGMgr::LeaveLfg: [" UI64FMTD "] queue: %u", GetGuidForLog(guid), queueId);

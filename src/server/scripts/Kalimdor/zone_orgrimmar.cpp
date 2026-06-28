@@ -22,8 +22,6 @@
 //#include "AreaTriggerAI.h"
 #include "LFGMgr.h"
 //#include "SceneHelper.h"
-#include "ObjectMgr.h"
-#include "Player.h"
 
 class spell_waters_of_farseeing_94687 : public SpellScriptLoader
 {
@@ -54,63 +52,7 @@ public:
     }
 };
 
-// General Nazgrim 54870 — "All Aboard!" (quest 31853) boarding handler.
-// The original mechanic used a phased Nazgrim at Bladefist Bay + a scene spell
-// (121545) that is not implemented. This script gives Nazgrim in Orgrimmar a
-// direct gossip option while the quest is active, then completes it and
-// teleports the player to the Horde landing site in Jade Forest (map 870).
-class npc_general_nazgrim_orgrimmar : public CreatureScript
-{
-    enum
-    {
-        QUEST_ALL_ABOARD    = 31853,
-        NPC_ENTRY_NAZGRIM   = 54870,
-    };
-
-    static constexpr float JADE_FOREST_X = 3008.0f;
-    static constexpr float JADE_FOREST_Y = -552.0f;
-    static constexpr float JADE_FOREST_Z = 248.2f;
-    static constexpr float JADE_FOREST_O = 3.84f;
-
-public:
-    npc_general_nazgrim_orgrimmar() : CreatureScript("npc_general_nazgrim_orgrimmar") { }
-
-    bool OnGossipHello(Player* player, Creature* creature) override
-    {
-        if (creature->IsQuestGiver())
-            player->PrepareQuestMenu(creature->GetGUID());
-
-        if (player->GetQuestStatus(QUEST_ALL_ABOARD) == QUEST_STATUS_INCOMPLETE)
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready to board Hellscream's Fist, General.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
-
-        SendGossipMenuFor(player, player->GetGossipTextId(creature), creature->GetGUID());
-        return true;
-    }
-
-    bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
-    {
-        ClearGossipMenuFor(player);
-
-        if (action == GOSSIP_ACTION_INFO_DEF + 1)
-        {
-            CloseGossipMenuFor(player);
-
-            Quest const* quest = sObjectMgr->GetQuestTemplate(QUEST_ALL_ABOARD);
-            if (quest && player->GetQuestStatus(QUEST_ALL_ABOARD) == QUEST_STATUS_INCOMPLETE)
-            {
-                player->CompleteQuest(QUEST_ALL_ABOARD);
-                player->RewardQuest(quest, 0, creature, false);
-            }
-
-            player->TeleportTo(870, JADE_FOREST_X, JADE_FOREST_Y, JADE_FOREST_Z, JADE_FOREST_O);
-        }
-
-        return true;
-    }
-};
-
 void AddSC_orgrimmar()
 {
     new spell_waters_of_farseeing_94687();
-    new npc_general_nazgrim_orgrimmar();
 }

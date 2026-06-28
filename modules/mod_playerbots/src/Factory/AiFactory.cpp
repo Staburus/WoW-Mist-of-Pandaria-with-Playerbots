@@ -572,8 +572,6 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     {
         if (sPlayerbotAIConfig->randomBotJoinLfg)
             nonCombatEngine->addStrategy("lfg", false);
-        if (sPlayerbotAIConfig->randomBotJoinBG)
-            nonCombatEngine->addStrategy("bg", false);
     }
 
     nonCombatEngine->addStrategy("say hello");

@@ -66,8 +66,8 @@ void GenericWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode("target critical health", NextAction::array(0, new NextAction("execute", ACTION_HIGH + 20), nullptr)));
     triggers.push_back(new TriggerNode("victory rush", NextAction::array(0, new NextAction("victory rush", ACTION_INTERRUPT), nullptr)));
     triggers.push_back(new TriggerNode("colossus smash", NextAction::array(0, new NextAction("colossus smash", ACTION_HIGH + 4), nullptr)));
-    triggers.push_back(new TriggerNode("sunder armor", NextAction::array(0, new NextAction("sunder armor", ACTION_HIGH + 4), nullptr)));
-    triggers.push_back(new TriggerNode("thunder clap", NextAction::array(0, new NextAction("thunder clap", ACTION_HIGH + 2), nullptr)));
+    //triggers.push_back(new TriggerNode("sunder armor", NextAction::array(0, new NextAction("sunder armor", ACTION_HIGH + 4), nullptr)));
+    //triggers.push_back(new TriggerNode("thunder clap", NextAction::array(0, new NextAction("thunder clap", ACTION_HIGH + 2), nullptr)));
 
     //triggers.push_back(new TriggerNode("medium health", NextAction::array(0, new NextAction("", ACTION_INTERRUPT), nullptr)));
     triggers.push_back(new TriggerNode("low health", NextAction::array(0, new NextAction("shield wall", ACTION_INTERRUPT), nullptr)));
