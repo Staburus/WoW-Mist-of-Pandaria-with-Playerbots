@@ -11,6 +11,7 @@
 #include "GenericTriggers.h"
 #include "HealthTriggers.h"
 #include "LfgTriggers.h"
+#include "NewRpgTriggers.h"
 #include "RangeTriggers.h"
 
 class PlayerbotAI;
@@ -100,6 +101,12 @@ public:
         creators["protect party member"] = &TriggerContext::protect_party_member;
 
         creators["lfg proposal active"] = &TriggerContext::lfg_proposal_active;
+        creators["lfg join timer"] = &TriggerContext::lfg_join_timer;
+
+        creators["go grind status"] = &TriggerContext::rpg_go_grind;
+        creators["go innkeeper status"] = &TriggerContext::rpg_go_innkeeper;
+        creators["near random status"] = &TriggerContext::rpg_near_random;
+        creators["near npc status"] = &TriggerContext::rpg_near_npc;
     }
 
 private:
@@ -181,6 +188,12 @@ private:
 
     static Trigger* protect_party_member(PlayerbotAI* botAI) { return new ProtectPartyMemberTrigger(botAI); }
     static Trigger* lfg_proposal_active(PlayerbotAI* botAI) { return new LfgProposalActiveTrigger(botAI); }
+    static Trigger* lfg_join_timer(PlayerbotAI* botAI) { return new LfgJoinTrigger(botAI); }
+
+    static Trigger* rpg_go_grind(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, "go grind status", NewRpgStatus::GO_GRIND); }
+    static Trigger* rpg_go_innkeeper(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, "go innkeeper status", NewRpgStatus::GO_INNKEEPER); }
+    static Trigger* rpg_near_random(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, "near random status", NewRpgStatus::NEAR_RANDOM); }
+    static Trigger* rpg_near_npc(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, "near npc status", NewRpgStatus::NEAR_NPC); }
 };
 
 #endif

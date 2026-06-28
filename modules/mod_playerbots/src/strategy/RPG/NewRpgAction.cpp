@@ -29,106 +29,26 @@ bool TellRpgStatusAction::Execute(Event event)
 
 bool NewRpgStatusUpdateAction::Execute(Event event)
 {
-    /*NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgInfo& info = botAI->GetMutableRpgInfo();
     switch (info.status)
     {
         case NewRpgStatus::IDLE:
         {
             uint32 roll = urand(1, 100);
-            // IDLE -> NEAR_NPC
-            // if ((!info.lastNearNpc || info.lastNearNpc + setNpcInterval < getMSTime()) && roll <= 30)
-            if (roll <= 30)
+            if (roll <= 70)
             {
-                info.lastNearNpc = getMSTime();
-                GuidVector possibleTargets = AI_VALUE(GuidVector, "possible rpg targets");
-                if (!possibleTargets.empty())
-                {
-                    info.status = NewRpgStatus::NEAR_NPC;
-                    return true;
-                }
+                info.status = NewRpgStatus::NEAR_RANDOM;
+                info.lastNearRandom = getMSTime();
+                return true;
             }
-            // IDLE -> GO_INNKEEPER
-            else if (roll <= 45)
-            {
-                WorldPosition pos = SelectRandomInnKeeperPos();
-                if (pos != WorldPosition() && bot->GetExactDist(pos) > 50.0f)
-                {
-                    info.lastGoInnKeeper = getMSTime();
-                    info.status = NewRpgStatus::GO_INNKEEPER;
-                    info.innKeeperPos = pos;
-                    return true;
-                }
-            }
-            // IDLE -> GO_GRIND
-            else if (roll <= 90)
-            {
-                WorldPosition pos = SelectRandomGrindPos();
-                if (pos != WorldPosition())
-                {
-                    info.lastGoGrind = getMSTime();
-                    info.status = NewRpgStatus::GO_GRIND;
-                    info.grindPos = pos;
-                    return true;
-                }
-            }
-            // IDLE -> REST
             info.status = NewRpgStatus::REST;
             info.lastRest = getMSTime();
             bot->SetStandState(UNIT_STAND_STATE_SIT);
             return true;
         }
-        case NewRpgStatus::GO_GRIND:
-        {
-            WorldPosition& originalPos = info.grindPos;
-            assert(info.grindPos != WorldPosition());
-            // GO_GRIND -> NEAR_RANDOM
-            if (bot->GetExactDist(originalPos) < 10.0f)
-            {
-                info.status = NewRpgStatus::NEAR_RANDOM;
-                info.lastNearRandom = getMSTime();
-                info.grindPos = WorldPosition();
-                return true;
-            }
-            // // just choose another grindPos
-            // if (!info.lastGoGrind || info.lastGoGrind + setGrindInterval < getMSTime())
-            // {
-            //     WorldPosition pos = SelectRandomGrindPos();
-            //     if (pos == WorldPosition())
-            //         break;
-            //     info.status = NewRpgStatus::GO_GRIND;
-            //     info.lastGoGrind = getMSTime();
-            //     info.grindPos = pos;
-            //     return true;
-            // }
-            break;
-        }
-        case NewRpgStatus::GO_INNKEEPER:
-        {
-            WorldPosition& originalPos = info.innKeeperPos;
-            assert(info.innKeeperPos != WorldPosition());
-            // GO_INNKEEPER -> NEAR_NPC
-            if (bot->GetExactDist(originalPos) < 10.0f)
-            {
-                info.lastNearNpc = getMSTime();
-                info.status = NewRpgStatus::NEAR_NPC;
-                info.innKeeperPos = WorldPosition();
-                return true;
-            }
-            break;
-        }
         case NewRpgStatus::NEAR_RANDOM:
         {
-            // NEAR_RANDOM -> IDLE
             if (info.lastNearRandom + statusNearRandomDuration < getMSTime())
-            {
-                info.status = NewRpgStatus::IDLE;
-                return true;
-            }
-            break;
-        }
-        case NewRpgStatus::NEAR_NPC:
-        {
-            if (info.lastNearNpc + statusNearNpcDuration < getMSTime())
             {
                 info.status = NewRpgStatus::IDLE;
                 return true;
@@ -137,7 +57,6 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
         }
         case NewRpgStatus::REST:
         {
-            // REST -> IDLE
             if (info.lastRest + statusRestDuration < getMSTime())
             {
                 info.status = NewRpgStatus::IDLE;
@@ -146,8 +65,9 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
             break;
         }
         default:
-            break;
-    }*/
+            info.status = NewRpgStatus::IDLE;
+            return true;
+    }
     return false;
 }
 
@@ -297,7 +217,7 @@ bool NewRpgGoInnKeeperAction::Execute(Event event)
 
 bool NewRpgMoveRandomAction::Execute(Event event)
 {
-    /*float distance = rand_norm() * moveStep;
+    float distance = rand_norm() * moveStep;
     Map* map = bot->GetMap();
     const float x = bot->GetPositionX();
     const float y = bot->GetPositionY();
@@ -313,13 +233,13 @@ bool NewRpgMoveRandomAction::Execute(Event event)
                                                   dx, dy, dz))
             continue;
 
-        if (map->IsInWater(bot->GetPhaseMask(), dx, dy, dz, bot->GetCollisionHeight()))
+        if (map->IsInWater(bot->GetPhaseMask(), dx, dy, dz))
             continue;
 
         bool moved = MoveTo(bot->GetMapId(), dx, dy, dz, false, false, false, true);
         if (moved)
             return true;
-    }*/
+    }
 
     return false;
 }
