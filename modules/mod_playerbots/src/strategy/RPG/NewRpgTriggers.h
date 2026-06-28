@@ -7,8 +7,8 @@
 class NewRpgStatusTrigger : public Trigger
 {
 public:
-    NewRpgStatusTrigger(PlayerbotAI* botAI, std::string const& name, NewRpgStatus status)
-        : Trigger(botAI, name), status(status)
+    NewRpgStatusTrigger(PlayerbotAI* botAI, NewRpgStatus status = NewRpgStatus::IDLE)
+        : Trigger(botAI, "new rpg status"), status(status)
     {
     }
     bool IsActive() override;
