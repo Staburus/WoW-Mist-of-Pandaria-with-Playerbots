@@ -174,7 +174,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool /*minimal*/)
 
     if (sPlayerbotAIConfig->randomBotJoinLfg)
     {
-        if (time(nullptr) > (LfgCheckTimer + 3))
+        if (time(nullptr) > (LfgCheckTimer + 10))
             CheckLfgQueue();
     }
 
