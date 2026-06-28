@@ -572,19 +572,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     {
         if (sPlayerbotAIConfig->randomBotJoinLfg)
             nonCombatEngine->addStrategy("lfg", false);
-
-        if (!player->GetGroup())
-        {
-            nonCombatEngine->removeStrategy("follow", false);
-            nonCombatEngine->addStrategy("new rpg", false);
-        }
-
-        if (!sPlayerbotAIConfig->randomBotNonCombatStrategies.empty())
-            nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig->randomBotNonCombatStrategies);
     }
-
-    if (!sPlayerbotAIConfig->nonCombatStrategies.empty())
-        nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig->nonCombatStrategies);
 
     nonCombatEngine->addStrategy("say hello");
 }
