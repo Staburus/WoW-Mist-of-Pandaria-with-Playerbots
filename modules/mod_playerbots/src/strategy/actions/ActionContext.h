@@ -10,7 +10,6 @@
 #include "PositionAction.h"
 #include "RtiAction.h"
 #include "MovementActions.h"
-#include "NewRpgAction.h"
 #include "RandomBotUpdateAction.h"
 #include "ReachTargetActions.h"
 #include "StayActions.h"
@@ -56,12 +55,8 @@ public:
         creators["reach party member to heal"] = &ActionContext::reach_party_member_to_heal;
         creators["reach party member to resurrect"] = &ActionContext::reach_party_member_to_resurrect;
 
-        creators["new rpg status update"] = &ActionContext::rpg_status_update;
-        creators["new rpg go grind"] = &ActionContext::rpg_go_grind;
-        creators["new rpg go innkeeper"] = &ActionContext::rpg_go_innkeeper;
-        creators["new rpg move random"] = &ActionContext::rpg_move_random;
-        creators["new rpg move npc"] = &ActionContext::rpg_move_npc;
-        creators["rpg status"] = &ActionContext::rpg_tell_status;
+        //creators["invite nearby"] = &ActionContext::invite_nearby;
+        //creators["invite guild"] = &ActionContext::invite_guild;
     }
 
 private:
@@ -98,13 +93,6 @@ private:
     static Action* ReachMelee(PlayerbotAI* botAI) { return new ReachMeleeAction(botAI); }
     static Action* reach_party_member_to_heal(PlayerbotAI* botAI) { return new ReachPartyMemberToHealAction(botAI); }
     static Action* reach_party_member_to_resurrect(PlayerbotAI* botAI) { return new ReachPartyMemberToResurrectAction(botAI); }
-
-    static Action* rpg_status_update(PlayerbotAI* botAI) { return new NewRpgStatusUpdateAction(botAI); }
-    static Action* rpg_go_grind(PlayerbotAI* botAI) { return new NewRpgGoGrindAction(botAI); }
-    static Action* rpg_go_innkeeper(PlayerbotAI* botAI) { return new NewRpgGoInnKeeperAction(botAI); }
-    static Action* rpg_move_random(PlayerbotAI* botAI) { return new NewRpgMoveRandomAction(botAI); }
-    static Action* rpg_move_npc(PlayerbotAI* botAI) { return new NewRpgMoveNpcAction(botAI); }
-    static Action* rpg_tell_status(PlayerbotAI* botAI) { return new TellRpgStatusAction(botAI); }
 };
 
 #endif
