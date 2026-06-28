@@ -27,6 +27,8 @@
 #include "AccountMgr.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
+#include "ArenaTeam.h"
+#include "BattlegroundQueue.h"
 #include "BotFactory.h"
 #include "CharacterCache.h"
 #include "CellImpl.h"
@@ -37,12 +39,15 @@
 #include "Define.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "GroupMgr.h"
 #include "GuildMgr.h"
 #include "LFGMgr.h"
 #include "MapManager.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "PlayerbotSpec.h"
+#include "AiFactory.h"
 #include "PerformanceMonitor.h"
 #include "Playerbots.h"
 #include "RandomItemManager.h"
@@ -84,6 +89,872 @@ void RandomPlayerbotMgr::ScheduleTeleport(uint32 bot, uint32 time)
     SetEventValue(bot, "teleport", 1, time);
 }
 
+static uint32 GetBotLfgRoles(Player* bot)
+{
+    Specializations spec = AiFactory::GetPlayerSpecTab(bot);
+    switch (bot->GetClass())
+    {
+        case CLASS_DRUID:
+            if (spec == Specializations::SPEC_DRUID_RESTORATION) return lfg::PLAYER_ROLE_HEALER;
+            if (spec == Specializations::SPEC_DRUID_GUARDIAN) return lfg::PLAYER_ROLE_TANK;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_PALADIN:
+            if (spec == Specializations::SPEC_PALADIN_PROTECTION) return lfg::PLAYER_ROLE_TANK;
+            if (spec == Specializations::SPEC_PALADIN_HOLY) return lfg::PLAYER_ROLE_HEALER;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_PRIEST:
+            if (spec != Specializations::SPEC_PRIEST_SHADOW) return lfg::PLAYER_ROLE_HEALER;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_SHAMAN:
+            if (spec == Specializations::SPEC_SHAMAN_RESTORATION) return lfg::PLAYER_ROLE_HEALER;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_WARRIOR:
+            if (spec == Specializations::SPEC_WARRIOR_PROTECTION) return lfg::PLAYER_ROLE_TANK;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_DEATH_KNIGHT:
+            if (spec == Specializations::SPEC_DEATH_KNIGHT_BLOOD) return lfg::PLAYER_ROLE_TANK;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        case CLASS_MONK:
+            if (spec == Specializations::SPEC_MONK_BREWMASTER) return lfg::PLAYER_ROLE_TANK;
+            if (spec == Specializations::SPEC_MONK_MISTWEAVER) return lfg::PLAYER_ROLE_HEALER;
+            return lfg::PLAYER_ROLE_DAMAGE;
+        default:
+            return lfg::PLAYER_ROLE_DAMAGE;
+    }
+}
+
+void RandomPlayerbotMgr::CheckLfgQueue()
+{
+    LfgCheckTimer = time(nullptr);
+
+    LfgDungeons[TEAM_ALLIANCE].clear();
+    LfgDungeons[TEAM_HORDE].clear();
+
+    struct RealPlayerLfgInfo
+    {
+        TeamId teamId;
+        uint8 level;
+        uint8 minDungeonLevel;
+        uint8 maxDungeonLevel;
+        uint32 roleMask;
+        std::vector<uint32> dungeonEntries;
+    };
+    std::vector<RealPlayerLfgInfo> realPlayerQueues;
+
+    for (Player* player : _players)
+    {
+        if (!player || !player->IsInWorld())
+            continue;
+
+        Group* group = player->GetGroup();
+        ObjectGuid guid = group ? group->GetGUID() : player->GetGUID();
+
+        lfg::LfgState gState = sLFGMgr->GetActiveState(guid);
+        if (gState == lfg::LFG_STATE_NONE || gState >= lfg::LFG_STATE_DUNGEON)
+            continue;
+
+        uint32 queueId = sLFGMgr->GetActiveQueueId(player->GetGUID());
+        if (!queueId)
+        {
+            TC_LOG_DEBUG("playerbots", "Player %s in LFG state %d but no queueId", player->GetName().c_str(), (int)gState);
+            continue;
+        }
+
+        TC_LOG_INFO("playerbots", "Found real player %s in LFG queue (state=%d, queueId=%u)", player->GetName().c_str(), (int)gState, queueId);
+
+        RealPlayerLfgInfo info;
+        info.teamId = player->GetTeamId();
+        info.level = player->GetLevel();
+        info.minDungeonLevel = 255;
+        info.maxDungeonLevel = 0;
+        info.roleMask = 0;
+        if (PlayerBotSpec::IsTank(player)) info.roleMask = lfg::PLAYER_ROLE_TANK;
+        else if (PlayerBotSpec::IsHeal(player)) info.roleMask = lfg::PLAYER_ROLE_HEALER;
+        else info.roleMask = lfg::PLAYER_ROLE_DAMAGE;
+
+        lfg::LfgDungeonSet const& dList = sLFGMgr->GetSelectedDungeons(player->GetGUID(), queueId);
+        for (uint32 dungeonId : dList)
+        {
+            lfg::LFGDungeonData const* dungeon = sLFGMgr->GetLFGDungeon(dungeonId);
+            if (!dungeon)
+                continue;
+
+            if (dungeon->minlevel < info.minDungeonLevel)
+                info.minDungeonLevel = dungeon->minlevel;
+            if (dungeon->maxlevel > info.maxDungeonLevel)
+                info.maxDungeonLevel = dungeon->maxlevel;
+
+            LfgDungeons[player->GetTeamId()].push_back(dungeon->id);
+            info.dungeonEntries.push_back(dungeon->Entry());
+        }
+
+        if (!info.dungeonEntries.empty())
+            realPlayerQueues.push_back(info);
+    }
+
+    // Directly queue bots when real players are in LFG queue
+    for (auto& rpInfo : realPlayerQueues)
+    {
+        // Count bots already in LFG for this team
+        // needX = how many BOT slots we need (player's role already subtracted)
+        // haveX = how many BOTS already fill that role (start at 0, don't count player)
+        bool needTank = (rpInfo.roleMask != lfg::PLAYER_ROLE_TANK);
+        bool needHealer = (rpInfo.roleMask != lfg::PLAYER_ROLE_HEALER);
+        uint32 needDps = (rpInfo.roleMask == lfg::PLAYER_ROLE_DAMAGE) ? 2 : 3;
+        uint32 haveTank = 0;
+        uint32 haveHealer = 0;
+        uint32 haveDps = 0;
+
+        // Check which bots are already in LFG
+        for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+        {
+            Player* bot = it->second;
+            if (!bot || !bot->IsInWorld())
+                continue;
+            if (sLFGMgr->GetActiveState(bot->GetGUID()) != lfg::LFG_STATE_NONE)
+            {
+                uint32 role = GetBotLfgRoles(bot);
+                if (role == lfg::PLAYER_ROLE_TANK) haveTank++;
+                else if (role == lfg::PLAYER_ROLE_HEALER) haveHealer++;
+                else haveDps++;
+            }
+        }
+
+        if (haveTank >= 1) needTank = false;
+        if (haveHealer >= 1) needHealer = false;
+        if (haveDps >= needDps) needDps = 0;
+        else needDps -= haveDps;
+
+        if (!needTank && !needHealer && needDps == 0)
+            continue;
+
+        TC_LOG_INFO("playerbots", "LFG: need tank:%d healer:%d dps:%u for team %s (total bots: %zu, lvl range: %u-%u)",
+            needTank, needHealer, needDps, rpInfo.teamId == TEAM_ALLIANCE ? "Alliance" : "Horde",
+            playerBots.size(), rpInfo.minDungeonLevel, rpInfo.maxDungeonLevel);
+
+        // If no bots are online, log some in on demand
+        if (playerBots.empty() && botLoading.empty())
+        {
+            GetBots();
+            if (_currentBots.empty())
+                AddRandomBots();
+            uint32 loggedIn = 0;
+            for (uint32 botId : _currentBots)
+            {
+                if (GetPlayerBot(botId))
+                    continue;
+                ObjectGuid botGUID = ObjectGuid::Create<HighGuid::Player>(botId);
+                AddPlayerBot(botGUID, 0);
+                loggedIn++;
+                if (loggedIn >= 10)
+                    break;
+            }
+            if (loggedIn > 0)
+            {
+                printf("[Playerbots] LFG: Started login for %u bots on demand\n", loggedIn);
+                fflush(stdout);
+                continue;
+            }
+        }
+
+        // Diagnostic counters
+        uint32 filterNull = 0, filterTeam = 0, filterLevel = 0, filterDead = 0;
+        uint32 filterBg = 0, filterGroup = 0, filterInstance = 0, filterLfg = 0, filterDungeon = 0;
+        uint32 eligible = 0;
+
+        // Helper: check if a bot is eligible for LFG queueing
+        auto isBotEligible = [&](Player* bot) -> bool
+        {
+            if (!bot || !bot->IsInWorld() || !IsRandomBot(bot))
+            { filterNull++; return false; }
+            if (bot->GetTeamId() != rpInfo.teamId)
+            { filterTeam++; return false; }
+            if (bot->GetLevel() < 15 || bot->isDead() || bot->IsInCombat())
+            { filterDead++; return false; }
+            if (bot->GetLevel() < rpInfo.minDungeonLevel || bot->GetLevel() > rpInfo.maxDungeonLevel)
+            { filterLevel++; return false; }
+            if (bot->InBattleground() || bot->InBattlegroundQueue())
+            { filterBg++; return false; }
+            if (bot->GetGroup() && bot->GetGroup()->GetLeaderGUID() != bot->GetGUID())
+            { filterGroup++; return false; }
+            Map* map = bot->GetMap();
+            if (map && map->Instanceable())
+            { filterInstance++; return false; }
+            if (sLFGMgr->GetActiveState(bot->GetGUID()) != lfg::LFG_STATE_NONE)
+            { filterLfg++; return false; }
+            eligible++;
+            return true;
+        };
+
+        // Helper: build filtered dungeon list for a bot
+        auto buildDungeonList = [&](Player* bot) -> lfg::LfgDungeonSet
+        {
+            lfg::LfgDungeonSet list;
+            for (uint32 entry : rpInfo.dungeonEntries)
+            {
+                uint32 dungeonId = entry & 0x00FFFFFF;
+                lfg::LFGDungeonData const* dungeon = sLFGMgr->GetLFGDungeon(dungeonId);
+                if (!dungeon)
+                    continue;
+                if (dungeon->minlevel && (bot->GetLevel() < dungeon->minlevel || bot->GetLevel() > dungeon->maxlevel))
+                    continue;
+                list.insert(dungeonId);
+            }
+            return list;
+        };
+
+        // Helper: queue a bot for LFG with a given role
+        auto queueBot = [&](Player* bot, uint32 role)
+        {
+            lfg::LfgDungeonSet list = buildDungeonList(bot);
+            if (list.empty())
+            {
+                filterDungeon++;
+                return false;
+            }
+            std::string comment = std::to_string(PlayerbotAI::GetMixedGearScore(bot, true, false, 12));
+            TC_LOG_INFO("playerbots", "Bot %s (lvl %u, class %u): LFG join as role %u (%zu dungeons)",
+                bot->GetName().c_str(), bot->GetLevel(), bot->GetClass(), role, list.size());
+            sLFGMgr->JoinLfg(bot, lfg::LfgRoles(role), list, comment);
+            return true;
+        };
+
+        // Pass 1: match bots by their natural spec role
+        for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+        {
+            if (!needTank && !needHealer && needDps == 0)
+                break;
+
+            Player* bot = it->second;
+            if (!isBotEligible(bot))
+                continue;
+
+            uint32 role = GetBotLfgRoles(bot);
+
+            bool shouldQueue = false;
+            if (needTank && role == lfg::PLAYER_ROLE_TANK)
+            {
+                needTank = false;
+                shouldQueue = true;
+            }
+            else if (needHealer && role == lfg::PLAYER_ROLE_HEALER)
+            {
+                needHealer = false;
+                shouldQueue = true;
+            }
+            else if (needDps > 0 && role == lfg::PLAYER_ROLE_DAMAGE)
+            {
+                needDps--;
+                shouldQueue = true;
+            }
+
+            if (!shouldQueue)
+                continue;
+
+            queueBot(bot, role);
+        }
+
+        // Pass 2: if DPS slots still unfilled, queue ANY eligible bot as DPS
+        if (needDps > 0)
+        {
+            TC_LOG_INFO("playerbots", "LFG pass 2: still need %u DPS, trying any eligible bot", needDps);
+            for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+            {
+                if (needDps == 0)
+                    break;
+
+                Player* bot = it->second;
+                if (!isBotEligible(bot))
+                    continue;
+
+                if (queueBot(bot, lfg::PLAYER_ROLE_DAMAGE))
+                    needDps--;
+            }
+        }
+
+        if (needTank || needHealer || needDps > 0)
+        {
+            TC_LOG_INFO("playerbots", "LFG UNFILLED: tank:%d healer:%d dps:%u | filters: null=%u team=%u lvl=%u dead=%u bg=%u group=%u inst=%u lfg=%u | eligible=%u",
+                needTank, needHealer, needDps, filterNull, filterTeam, filterLevel, filterDead, filterBg, filterGroup, filterInstance, filterLfg, eligible);
+        }
+    }
+
+    TC_LOG_DEBUG("playerbots", "LFG Queue check finished");
+}
+
+void RandomPlayerbotMgr::CheckBgQueue()
+{
+    BgCheckTimer = time(nullptr);
+
+    printf("[Playerbots] CheckBgQueue: %zu bots online\n", playerBots.size());
+    fflush(stdout);
+
+    for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+    {
+        for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+        {
+            BattlegroundData[queueType][bracket] = BattlegroundInfo();
+        }
+    }
+
+    auto scanPlayer = [&](Player* player, bool isBot)
+    {
+        if (!player || !player->IsInWorld())
+            return;
+
+        for (uint8 i = 0; i < PLAYER_MAX_BATTLEGROUND_QUEUES; ++i)
+        {
+            BattlegroundQueueTypeId queueTypeId = player->GetBattlegroundQueueTypeId(i);
+            if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
+                continue;
+
+            BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+            Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+            if (!bg)
+                continue;
+
+            PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), player->GetLevel());
+            if (!pvpDiff)
+                continue;
+
+            BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
+            uint8 arenaType = BattlegroundMgr::BGArenaType(queueTypeId);
+
+            if (arenaType)
+            {
+                BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+                GroupQueueInfo ginfo;
+                if (bgQueue.GetPlayerGroupInfoData(player->GetGUID(), &ginfo))
+                {
+                    if (ginfo.IsRated)
+                    {
+                        if (isBot)
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount++;
+                        else
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaPlayerCount++;
+                    }
+                    else
+                    {
+                        if (isBot)
+                            BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
+                        else
+                            BattlegroundData[queueTypeId][bracketId].skirmishArenaPlayerCount++;
+                    }
+                }
+            }
+            else if (queueTypeId == BATTLEGORUND_QUEUE_RATED_BG)
+            {
+                TeamId teamId = player->GetTeamId();
+                if (teamId == TEAM_ALLIANCE)
+                {
+                    if (isBot)
+                        BattlegroundData[queueTypeId][bracketId].ratedBgAllianceBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].ratedBgAlliancePlayerCount++;
+                }
+                else
+                {
+                    if (isBot)
+                        BattlegroundData[queueTypeId][bracketId].ratedBgHordeBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].ratedBgHordePlayerCount++;
+                }
+            }
+            else
+            {
+                TeamId teamId = player->GetTeamId();
+                if (teamId == TEAM_ALLIANCE)
+                {
+                    if (isBot)
+                        BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].bgAlliancePlayerCount++;
+                }
+                else
+                {
+                    if (isBot)
+                        BattlegroundData[queueTypeId][bracketId].bgHordeBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].bgHordePlayerCount++;
+                }
+            }
+        }
+
+        if (player->InBattleground())
+        {
+            Battleground* bg = player->GetBattleground();
+            if (bg)
+            {
+                BattlegroundTypeId bgTypeId = bg->GetTypeID();
+                uint8 arenaType = bg->GetArenaType();
+                BattlegroundQueueTypeId queueTypeId = BattlegroundMgr::BGQueueTypeId(bgTypeId, arenaType);
+
+                PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), player->GetLevel());
+                if (pvpDiff)
+                {
+                    BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
+                    if (arenaType)
+                    {
+                        if (bg->IsRated())
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount = 1;
+                        else
+                            BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount = 1;
+                    }
+                    else if (bg->IsRatedBG())
+                    {
+                        BattlegroundData[BATTLEGORUND_QUEUE_RATED_BG][bracketId].ratedBgInstanceCount = 1;
+                    }
+                    else
+                    {
+                        BattlegroundData[queueTypeId][bracketId].bgInstanceCount = 1;
+                    }
+                }
+            }
+        }
+    };
+
+    // Scan real players from world sessions (more robust than _players list)
+    uint32 realPlayerCount = 0;
+    for (auto const& pair : sWorld->GetAllSessions())
+    {
+        WorldSession* session = pair.second;
+        if (!session || session->IsBot())
+            continue;
+        Player* player = session->GetPlayer();
+        if (!player || !player->IsInWorld())
+            continue;
+        scanPlayer(player, false);
+        realPlayerCount++;
+    }
+
+    // Scan bot players and auto-accept any pending BG invites
+    for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+    {
+        Player* bot = it->second;
+        scanPlayer(bot, true);
+
+        if (!bot || !bot->IsInWorld() || !bot->InBattlegroundQueue() || bot->InBattleground())
+            continue;
+        if (!IsRandomBot(bot))
+            continue;
+
+        for (uint8 i = 0; i < PLAYER_MAX_BATTLEGROUND_QUEUES; ++i)
+        {
+            BattlegroundQueueTypeId queueTypeId = bot->GetBattlegroundQueueTypeId(i);
+            if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
+                continue;
+
+            BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+            GroupQueueInfo ginfo;
+            if (!bgQueue.GetPlayerGroupInfoData(bot->GetGUID(), &ginfo))
+                continue;
+
+            if (ginfo.IsInvitedToBGInstanceGUID)
+            {
+                BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+                bool isMetaQueue = (bgTypeId == BATTLEGROUND_AA || bgTypeId == BATTLEGROUND_RB || bgTypeId == BATTLEGROUND_RATED_10_VS_10);
+                Battleground* bg = sBattlegroundMgr->GetBattleground(
+                    ginfo.IsInvitedToBGInstanceGUID,
+                    isMetaQueue ? BATTLEGROUND_TYPE_NONE : bgTypeId);
+
+                if (bg)
+                {
+                    TC_LOG_INFO("playerbots", "CheckBgQueue: Bot %s auto-accepting BG invite (instance %u)",
+                        bot->GetName().c_str(), ginfo.IsInvitedToBGInstanceGUID);
+                    bot->SetBattlegroundEntryPoint();
+                    sBattlegroundMgr->SendToBattleground(bot, ginfo.IsInvitedToBGInstanceGUID, bgTypeId);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Reactive joining: when real players are in queue, activate bot joining for that queue+bracket
+    TC_LOG_INFO("playerbots", "CheckBgQueue: %u real players online", realPlayerCount);
+    for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+    {
+        if (queueType == BATTLEGROUND_QUEUE_SOLO)
+            continue;
+
+        for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+        {
+            BattlegroundInfo& info = BattlegroundData[queueType][bracket];
+            uint8 arenaType = BattlegroundMgr::BGArenaType(BattlegroundQueueTypeId(queueType));
+
+            if (arenaType)
+            {
+                if (info.skirmishArenaPlayerCount > 0)
+                {
+                    info.activeSkirmishArenaQueue = 1;
+                    TC_LOG_INFO("playerbots", "Reactive: skirmish arena queue %d bracket %d activated (%u players)", queueType, bracket, info.skirmishArenaPlayerCount);
+                }
+                if (info.ratedArenaPlayerCount > 0)
+                {
+                    info.activeRatedArenaQueue = 1;
+                    TC_LOG_INFO("playerbots", "Reactive: rated arena queue %d bracket %d activated (%u players)", queueType, bracket, info.ratedArenaPlayerCount);
+                }
+            }
+            else if (queueType == BATTLEGORUND_QUEUE_RATED_BG)
+            {
+                if (info.ratedBgAlliancePlayerCount > 0 || info.ratedBgHordePlayerCount > 0)
+                {
+                    info.activeRatedBgQueue = 1;
+                    TC_LOG_INFO("playerbots", "Reactive: rated BG queue bracket %d activated (A:%u H:%u)", bracket, info.ratedBgAlliancePlayerCount, info.ratedBgHordePlayerCount);
+                }
+            }
+            else
+            {
+                if (info.bgAlliancePlayerCount > 0 || info.bgHordePlayerCount > 0)
+                {
+                    info.activeBgQueue = 1;
+                    TC_LOG_INFO("playerbots", "Reactive: BG queue %d bracket %d activated (A:%u H:%u)", queueType, bracket, info.bgAlliancePlayerCount, info.bgHordePlayerCount);
+                }
+            }
+        }
+    }
+
+    // If real players are in queue but no bots are online, log some in on demand
+    bool realPlayersInBgQueue = false;
+    for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES && !realPlayersInBgQueue; ++queueType)
+    {
+        for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+        {
+            BattlegroundInfo& info = BattlegroundData[queueType][bracket];
+            if (info.bgAlliancePlayerCount > 0 || info.bgHordePlayerCount > 0 ||
+                info.skirmishArenaPlayerCount > 0 || info.ratedArenaPlayerCount > 0 ||
+                info.ratedBgAlliancePlayerCount > 0 || info.ratedBgHordePlayerCount > 0)
+            {
+                realPlayersInBgQueue = true;
+                break;
+            }
+        }
+    }
+    if (realPlayersInBgQueue && playerBots.empty() && botLoading.empty())
+    {
+        TC_LOG_INFO("playerbots", "No bots online — logging in bots on demand for BG queue fill");
+        GetBots();
+        if (_currentBots.empty())
+            AddRandomBots();
+        uint32 loggedIn = 0;
+        for (uint32 botId : _currentBots)
+        {
+            if (GetPlayerBot(botId))
+                continue;
+            ObjectGuid botGUID = ObjectGuid::Create<HighGuid::Player>(botId);
+            AddPlayerBot(botGUID, 0);
+            loggedIn++;
+            if (loggedIn >= 20)
+                break;
+        }
+        if (loggedIn > 0)
+            TC_LOG_INFO("playerbots", "Started login for %u bots for BG — they will be queued on next tick", loggedIn);
+    }
+
+    if (sPlayerbotAIConfig->randomBotAutoJoinBG && playerBots.size() >= GetMaxAllowedBotCount())
+    {
+        struct BgAutoJoin { BattlegroundQueueTypeId queueId; uint32 configCount; };
+        BgAutoJoin autoJoins[] = {
+            { BATTLEGROUND_QUEUE_AV,  sPlayerbotAIConfig->randomBotAutoJoinBGAVCount },
+            { BATTLEGROUND_QUEUE_WS,  sPlayerbotAIConfig->randomBotAutoJoinBGWSCount },
+            { BATTLEGROUND_QUEUE_AB,  sPlayerbotAIConfig->randomBotAutoJoinBGABCount },
+            { BATTLEGROUND_QUEUE_EY,  sPlayerbotAIConfig->randomBotAutoJoinBGEYCount },
+            { BATTLEGROUND_QUEUE_SA,  sPlayerbotAIConfig->randomBotAutoJoinBGSACount },
+            { BATTLEGROUND_QUEUE_IC,  sPlayerbotAIConfig->randomBotAutoJoinBGICCount },
+            { BATTLEGROUND_QUEUE_TP,  sPlayerbotAIConfig->randomBotAutoJoinBGTPCount },
+            { BATTLEGROUND_QUEUE_BFG, sPlayerbotAIConfig->randomBotAutoJoinBGBFGCount },
+            { BATTLEGROUND_QUEUE_TOK, sPlayerbotAIConfig->randomBotAutoJoinBGTOKCount },
+            { BATTLEGROUND_QUEUE_SM,  sPlayerbotAIConfig->randomBotAutoJoinBGSMCount },
+            { BATTLEGROUND_QUEUE_DG,  sPlayerbotAIConfig->randomBotAutoJoinBGDGCount },
+        };
+
+        for (auto& aj : autoJoins)
+        {
+            if (aj.configCount == 0)
+                continue;
+
+            for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+            {
+                BattlegroundBracketId bracketId = BattlegroundBracketId(bracket);
+                uint32 totalInstances = BattlegroundData[aj.queueId][bracketId].bgInstanceCount;
+                if (totalInstances < aj.configCount)
+                    BattlegroundData[aj.queueId][bracketId].activeBgQueue = 1;
+            }
+        }
+
+        struct ArenaAutoJoin { BattlegroundQueueTypeId queueId; uint32 configCount; };
+        ArenaAutoJoin arenaJoins[] = {
+            { BATTLEGROUND_QUEUE_2v2, sPlayerbotAIConfig->randomBotAutoJoinArena2v2Count },
+            { BATTLEGROUND_QUEUE_3v3, sPlayerbotAIConfig->randomBotAutoJoinArena3v3Count },
+            { BATTLEGROUND_QUEUE_5v5, sPlayerbotAIConfig->randomBotAutoJoinArena5v5Count },
+        };
+
+        for (auto& aj : arenaJoins)
+        {
+            if (aj.configCount == 0)
+                continue;
+
+            for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+            {
+                BattlegroundBracketId bracketId = BattlegroundBracketId(bracket);
+                uint32 totalInstances = BattlegroundData[aj.queueId][bracketId].skirmishArenaInstanceCount;
+                if (totalInstances < aj.configCount)
+                    BattlegroundData[aj.queueId][bracketId].activeSkirmishArenaQueue = 1;
+            }
+        }
+    }
+
+    // Direct reactive bot queueing — bypass the slow strategy/trigger system
+    for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+    {
+        BattlegroundQueueTypeId queueTypeId = BattlegroundQueueTypeId(queueType);
+        if (queueTypeId == BATTLEGROUND_QUEUE_SOLO)
+            continue;
+
+        uint8 arenaType = BattlegroundMgr::BGArenaType(queueTypeId);
+        BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+        Battleground* bgTemplate = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+        if (!bgTemplate)
+            continue;
+
+        for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+        {
+            BattlegroundBracketId bracketId = BattlegroundBracketId(bracket);
+            BattlegroundInfo& info = BattlegroundData[queueTypeId][bracketId];
+
+            if (!info.activeBgQueue && !info.activeSkirmishArenaQueue && !info.activeRatedArenaQueue && !info.activeRatedBgQueue)
+                continue;
+
+            // Normal BG: queue individual bots on each faction
+            if (!arenaType && queueTypeId != BATTLEGORUND_QUEUE_RATED_BG)
+            {
+                if (!info.activeBgQueue)
+                    continue;
+
+                uint32 teamSize = bgTemplate->GetMaxPlayersPerTeam();
+                uint32 maxPerSide = teamSize * (info.activeBgQueue + info.bgInstanceCount);
+
+                uint32 allianceTotal = info.bgAllianceBotCount + info.bgAlliancePlayerCount;
+                uint32 hordeTotal = info.bgHordeBotCount + info.bgHordePlayerCount;
+                uint32 allianceNeeded = (allianceTotal < maxPerSide) ? (maxPerSide - allianceTotal) : 0;
+                uint32 hordeNeeded = (hordeTotal < maxPerSide) ? (maxPerSide - hordeTotal) : 0;
+
+                if (allianceNeeded == 0 && hordeNeeded == 0)
+                    continue;
+
+                uint32 allianceQueued = 0, hordeQueued = 0;
+                for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+                {
+                    if (allianceQueued >= allianceNeeded && hordeQueued >= hordeNeeded)
+                        break;
+
+                    Player* bot = it->second;
+                    if (!bot || !bot->IsInWorld())
+                        continue;
+                    if (!IsRandomBot(bot))
+                        continue;
+                    if (bot->InBattleground() || bot->InBattlegroundQueue())
+                        continue;
+                    if (bot->IsInCombat() || bot->isDead())
+                        continue;
+                    if (bot->GetLevel() < 10)
+                        continue;
+
+                    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+                    if (!botAI || botAI->HasActivePlayerMaster())
+                        continue;
+                    if (bot->GetGroup())
+                        continue;
+
+                    Map* map = bot->GetMap();
+                    if (map && map->Instanceable())
+                        continue;
+                    if (!bot->GetBGAccessByLevel(bgTypeId))
+                        continue;
+                    if (!bot->HasFreeBattlegroundQueueId())
+                        continue;
+                    if (bot->HasAura(26013))
+                        continue;
+                    if (bot->InBattlegroundQueueForBattlegroundQueueType(queueTypeId))
+                        continue;
+
+                    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bgTemplate->GetMapId(), bot->GetLevel());
+                    if (!pvpDiff || pvpDiff->GetBracketId() != bracketId)
+                        continue;
+
+                    TeamId teamId = bot->GetTeamId();
+                    if (teamId == TEAM_ALLIANCE && allianceQueued >= allianceNeeded)
+                        continue;
+                    if (teamId == TEAM_HORDE && hordeQueued >= hordeNeeded)
+                        continue;
+
+                    BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+                    GroupQueueInfo* ginfo = bgQueue.AddGroup(bot, nullptr, bgTypeId, pvpDiff, 0, false, false, 0, 0);
+                    if (ginfo)
+                    {
+                        uint32 queueSlot = bot->AddBattlegroundQueueId(queueTypeId);
+                        bot->AddBattlegroundQueueJoinTime(bgTypeId, ginfo->JoinTime);
+
+                        WorldPacket data;
+                        sBattlegroundMgr->BuildBattlegroundStatusPacket(&data, bgTemplate, bot, queueSlot, STATUS_WAIT_QUEUE, 0, ginfo->JoinTime, 0);
+                        bot->GetSession()->SendPacket(&data);
+
+                        if (teamId == TEAM_ALLIANCE)
+                        {
+                            info.bgAllianceBotCount++;
+                            allianceQueued++;
+                        }
+                        else
+                        {
+                            info.bgHordeBotCount++;
+                            hordeQueued++;
+                        }
+                    }
+                }
+
+                if (allianceQueued > 0 || hordeQueued > 0)
+                {
+                    sBattlegroundMgr->ScheduleQueueUpdate(0, 0, queueTypeId, bgTypeId, bracketId);
+                    printf("[Playerbots] BG reactive: queued %u Alliance + %u Horde bots for queue %d bracket %d\n",
+                        allianceQueued, hordeQueued, queueType, bracket);
+                    fflush(stdout);
+                }
+            }
+            // Arena skirmish: form groups and queue
+            else if (arenaType && info.activeSkirmishArenaQueue)
+            {
+                uint32 teamSize = arenaType;
+                uint32 bracketSize = teamSize * 2;
+                uint32 maxRequired = bracketSize * (info.activeSkirmishArenaQueue + info.skirmishArenaInstanceCount);
+                if (maxRequired != 0)
+                    maxRequired += teamSize;
+
+                uint32 totalInQueue = info.skirmishArenaBotCount + info.skirmishArenaPlayerCount;
+                if (totalInQueue >= maxRequired)
+                    continue;
+
+                uint32 needed = maxRequired - totalInQueue;
+
+                std::vector<Player*> eligibleBots;
+                for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+                {
+                    Player* bot = it->second;
+                    if (!bot || !bot->IsInWorld())
+                        continue;
+                    if (!IsRandomBot(bot))
+                        continue;
+                    if (bot->InBattleground() || bot->InBattlegroundQueue())
+                        continue;
+                    if (bot->IsInCombat() || bot->isDead())
+                        continue;
+                    if (bot->GetLevel() < 70)
+                        continue;
+
+                    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+                    if (!botAI || botAI->HasActivePlayerMaster())
+                        continue;
+                    if (bot->GetGroup())
+                        continue;
+
+                    Map* map = bot->GetMap();
+                    if (map && map->Instanceable())
+                        continue;
+                    if (!bot->HasFreeBattlegroundQueueId())
+                        continue;
+
+                    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bgTemplate->GetMapId(), bot->GetLevel());
+                    if (!pvpDiff || pvpDiff->GetBracketId() != bracketId)
+                        continue;
+
+                    eligibleBots.push_back(bot);
+                }
+
+                uint32 queued = 0;
+                while (queued < needed && eligibleBots.size() >= teamSize)
+                {
+                    Player* leader = eligibleBots.back();
+                    eligibleBots.pop_back();
+
+                    Group* group = new Group();
+                    if (!group->Create(leader))
+                    {
+                        delete group;
+                        continue;
+                    }
+                    sGroupMgr->AddGroup(group);
+
+                    uint32 membersAdded = 1;
+                    while (membersAdded < teamSize && !eligibleBots.empty())
+                    {
+                        Player* member = eligibleBots.back();
+                        eligibleBots.pop_back();
+                        if (group->AddMember(member))
+                        {
+                            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+                            if (memberAI)
+                                memberAI->Reset();
+                            membersAdded++;
+                        }
+                    }
+
+                    if (group->GetMembersCount() < teamSize)
+                    {
+                        group->Disband();
+                        break;
+                    }
+
+                    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bgTemplate->GetMapId(), leader->GetLevel());
+                    if (!pvpDiff)
+                    {
+                        group->Disband();
+                        continue;
+                    }
+
+                    BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+                    uint8 arenaSlot = ArenaTeam::GetSlotByType(arenaType);
+                    ArenaTeam team{ RatedPvpSlot(arenaSlot), group };
+                    uint32 arenaRating = std::max(team.GetRating(), (uint32)1);
+                    uint32 matchmakerRating = team.GetMatchmakerRating();
+
+                    GroupQueueInfo* ginfo = bgQueue.AddGroup(leader, group, bgTypeId, pvpDiff, arenaType, false, false, arenaRating, matchmakerRating);
+                    if (ginfo)
+                    {
+                        for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+                        {
+                            Player* member = itr->GetSource();
+                            if (!member)
+                                continue;
+
+                            uint32 queueSlot = member->AddBattlegroundQueueId(queueTypeId);
+                            member->AddBattlegroundQueueJoinTime(bgTypeId, ginfo->JoinTime);
+
+                            WorldPacket data;
+                            sBattlegroundMgr->BuildBattlegroundStatusPacket(&data, bgTemplate, member, queueSlot, STATUS_WAIT_QUEUE, 0, ginfo->JoinTime, arenaType);
+                            member->GetSession()->SendPacket(&data);
+                        }
+
+                        info.skirmishArenaBotCount += group->GetMembersCount();
+                        queued += group->GetMembersCount();
+                        sBattlegroundMgr->ScheduleQueueUpdate(matchmakerRating, arenaType, queueTypeId, bgTypeId, bracketId);
+                    }
+                    else
+                    {
+                        group->Disband();
+                    }
+                }
+
+                if (queued > 0)
+                {
+                    printf("[Playerbots] Arena reactive: queued %u bots for %dv%d skirmish bracket %d\n",
+                        queued, arenaType, arenaType, bracket);
+                    fflush(stdout);
+                }
+            }
+        }
+    }
+
+    TC_LOG_DEBUG("playerbots", "BG Queue check finished");
+}
+
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool /*minimal*/)
 {
     if (totalPmo)
@@ -91,9 +962,34 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool /*minimal*/)
 
     totalPmo = sPerformanceMonitor->start(PERF_MON_TOTAL, "RandomPlayerbotMgr::FullTick");
 
-    if (!sPlayerbotAIConfig->randomBotAutologin || !sPlayerbotAIConfig->enabled)
-        return;
+    // Run queue checks even when autologin is off — bots will be logged in on demand
+    if (sPlayerbotAIConfig->enabled)
+    {
+        static time_t lastDebugPrint = 0;
+        time_t now = time(nullptr);
+        if (now > lastDebugPrint + 15)
+        {
+            lastDebugPrint = now;
+            printf("[Playerbots] UpdateAIInternal tick: enabled=%d, joinLfg=%d, joinBG=%d, autologin=%d, players=%zu, bots=%zu, botLoading=%zu\n",
+                sPlayerbotAIConfig->enabled, sPlayerbotAIConfig->randomBotJoinLfg, sPlayerbotAIConfig->randomBotJoinBG,
+                sPlayerbotAIConfig->randomBotAutologin, _players.size(), playerBots.size(), botLoading.size());
+            fflush(stdout);
+        }
 
+        if (sPlayerbotAIConfig->randomBotJoinLfg)
+        {
+            if (now > (LfgCheckTimer + 3))
+                CheckLfgQueue();
+        }
+
+        if (sPlayerbotAIConfig->randomBotJoinBG)
+        {
+            if (now > (BgCheckTimer + 5))
+                CheckBgQueue();
+        }
+    }
+
+    // Ensure bot_count is initialized even when autologin is off (needed for on-demand login)
     uint32 maxAllowedBotCount = GetEventValue(0, "bot_count");
     if (!maxAllowedBotCount || (maxAllowedBotCount < sPlayerbotAIConfig->minRandomBots ||
         maxAllowedBotCount > sPlayerbotAIConfig->maxRandomBots))
@@ -102,6 +998,12 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool /*minimal*/)
         auto randomInterval = sPlayerbotAIConfig->randomBotCountChangeMinInterval +
             (std::rand() % (sPlayerbotAIConfig->randomBotCountChangeMaxInterval - sPlayerbotAIConfig->randomBotCountChangeMinInterval + 1));
         SetEventValue(0, "bot_count", maxAllowedBotCount, randomInterval);
+    }
+
+    if (!sPlayerbotAIConfig->randomBotAutologin || !sPlayerbotAIConfig->enabled)
+    {
+        SetNextCheckDelay(1000);
+        return;
     }
 
     GetBots();

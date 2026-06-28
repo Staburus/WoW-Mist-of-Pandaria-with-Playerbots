@@ -20,6 +20,8 @@
 #include "LastMovementValue.h"
 #include "LastSpellCastValue.h"
 #include "LastSpellCastTimeValue.h"
+#include "LfgValues.h"
+#include "PvpValues.h"
 #include "MaintenanceValues.h"
 #include "ManaSaveLevelValue.h"
 #include "MasterTargetValue.h"
@@ -142,6 +144,10 @@ public:
         //creators["item for spell"] = &ValueContext::item_for_spell;
         creators["spell cast useful"] = &ValueContext::spell_cast_useful;
         creators["last spell cast"] = &ValueContext::last_spell_cast;
+        creators["lfg proposal"] = &ValueContext::lfg_proposal;
+        creators["bg type"] = &ValueContext::bg_type;
+        creators["arena type"] = &ValueContext::arena_type;
+        creators["bg role"] = &ValueContext::bg_role;
         creators["last spell cast time"] = &ValueContext::last_spell_cast_time;
 
         creators["estimated lifetime"] = &ValueContext::expected_lifetime;
@@ -254,6 +260,10 @@ private:
     static UntypedValue* vehicle_spell_id(PlayerbotAI* botAI) { return new VehicleSpellIdValue(botAI); }
     //static UntypedValue* inventory_item(PlayerbotAI* botAI) { return new InventoryItemValue(botAI); }
     static UntypedValue* last_spell_cast(PlayerbotAI* botAI) { return new LastSpellCastValue(botAI); }
+    static UntypedValue* lfg_proposal(PlayerbotAI* botAI) { return new LfgProposalValue(botAI); }
+    static UntypedValue* bg_type(PlayerbotAI* botAI) { return new BgTypeValue(botAI); }
+    static UntypedValue* arena_type(PlayerbotAI* botAI) { return new ArenaTypeValue(botAI); }
+    static UntypedValue* bg_role(PlayerbotAI* botAI) { return new BgRoleValue(botAI); }
     static UntypedValue* last_spell_cast_time(PlayerbotAI* botAI) { return new LastSpellCastTimeValue(botAI); }
     static UntypedValue* spell_cast_useful(PlayerbotAI* botAI) { return new SpellCastUsefulValue(botAI); }
 

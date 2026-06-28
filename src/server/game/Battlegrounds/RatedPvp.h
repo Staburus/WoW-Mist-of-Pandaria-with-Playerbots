@@ -20,6 +20,8 @@
 
 #include "Common.h"
 
+#include "DatabaseEnvFwd.h"
+
 enum ArenaType : uint32;
 
 struct RatedPvpInfo

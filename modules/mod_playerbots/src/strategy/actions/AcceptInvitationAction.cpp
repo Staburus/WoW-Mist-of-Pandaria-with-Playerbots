@@ -4,7 +4,6 @@
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
-#include "WorldPacket.h"
 
 AcceptInvitationAction::AcceptInvitationAction(PlayerbotAI* botAI, const std::string name)
     : Action(botAI, name)
@@ -17,21 +16,11 @@ bool AcceptInvitationAction::Execute(Event event)
     if (!grp)
         return false;
 
-    WorldPacket packet = event.getPacket();
-    uint8 unknown1, unknown2, unknown3;
-    uint8 inviter_name_len;
-    std::string inviterName;
-
-    packet >> unknown1 >> unknown2;
-    packet >> inviter_name_len;
-    packet.read_skip(27);
-    inviterName = packet.ReadString((uint32)inviter_name_len);
-
-    Player* inviter = ObjectAccessor::FindPlayerByName(inviterName);
+    // MoP SMSG_GROUP_INVITE uses bit-packed format; parse the leader GUID from the group
+    // object instead of trying to extract the inviter name from the packet bytes.
+    Player* inviter = ObjectAccessor::FindPlayer(grp->GetLeaderGUID());
     if (!inviter)
-    {
         return false;
-    }
 
     /*if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
     {

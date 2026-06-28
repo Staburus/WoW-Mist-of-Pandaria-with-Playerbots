@@ -10,6 +10,8 @@
 #include "NamedObjectContext.h"
 
 #include "AcceptInvitationAction.h"
+#include "BattleGroundJoinAction.h"
+#include "LfgActions.h"
 #include "ReleaseSpiritAction.h"
 #include "ReviveFromCorpseAction.h"
 #include "LeaveGroupAction.h"
@@ -29,6 +31,16 @@ public:
         creators["revive from corpse"] = &WorldPacketActionContext::revive_from_corpse;
         creators["find corpse"] = &WorldPacketActionContext::find_corpse;
         creators["auto release"] = &WorldPacketActionContext::auto_release;
+
+        creators["lfg teleport"] = &WorldPacketActionContext::lfg_teleport;
+        creators["lfg leave"] = &WorldPacketActionContext::lfg_leave;
+        creators["lfg accept"] = &WorldPacketActionContext::lfg_accept;
+        creators["lfg role check"] = &WorldPacketActionContext::lfg_role_check;
+        creators["lfg join"] = &WorldPacketActionContext::lfg_join;
+
+        creators["bg join"] = &WorldPacketActionContext::bg_join;
+        creators["bg leave"] = &WorldPacketActionContext::bg_leave;
+        creators["bg status check"] = &WorldPacketActionContext::bg_status_check;
     }
 
 private:
@@ -38,6 +50,16 @@ private:
     static Action* find_corpse(PlayerbotAI* botAI) { return new FindCorpseAction(botAI); }
     static Action* auto_release(PlayerbotAI* botAI) { return new AutoReleaseSpiritAction(botAI); }
     static Action* revive_from_corpse(PlayerbotAI* botAI) { return new ReviveFromCorpseAction(botAI); }
+
+    static Action* lfg_teleport(PlayerbotAI* botAI) { return new LfgTeleportAction(botAI); }
+    static Action* lfg_leave(PlayerbotAI* botAI) { return new LfgLeaveAction(botAI); }
+    static Action* lfg_accept(PlayerbotAI* botAI) { return new LfgAcceptAction(botAI); }
+    static Action* lfg_role_check(PlayerbotAI* botAI) { return new LfgRoleCheckAction(botAI); }
+    static Action* lfg_join(PlayerbotAI* botAI) { return new LfgJoinAction(botAI); }
+
+    static Action* bg_join(PlayerbotAI* botAI) { return new BGJoinAction(botAI); }
+    static Action* bg_leave(PlayerbotAI* botAI) { return new BGLeaveAction(botAI); }
+    static Action* bg_status_check(PlayerbotAI* botAI) { return new BGStatusCheckAction(botAI); }
 };
 
 #endif

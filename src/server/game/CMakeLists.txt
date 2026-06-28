@@ -314,6 +314,17 @@ if(USE_MODULES)
     target_compile_definitions(game PRIVATE USE_MODULES)
 endif()
 
+if(PLAYERBOTS)
+    file(GLOB_RECURSE PLAYERBOTS_GAME_SUBDIRS LIST_DIRECTORIES true "${CMAKE_SOURCE_DIR}/modules/mod_playerbots/src/*")
+    set(PLAYERBOTS_GAME_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/modules/mod_playerbots/src")
+    foreach(SUBDIR ${PLAYERBOTS_GAME_SUBDIRS})
+        if(IS_DIRECTORY ${SUBDIR})
+            list(APPEND PLAYERBOTS_GAME_INCLUDE_DIRS ${SUBDIR})
+        endif()
+    endforeach()
+    target_include_directories(game PRIVATE ${PLAYERBOTS_GAME_INCLUDE_DIRS})
+endif()
+
 if (ELUNA)
   add_dependencies(game lua)
   target_link_libraries(game

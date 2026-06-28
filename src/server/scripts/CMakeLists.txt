@@ -105,9 +105,9 @@ target_include_directories(scripts
     ${CMAKE_BINARY_DIR}
     boost
     common
-  PRIVATE   
+  PRIVATE
     game
-    fmt 
+    fmt
     ${CMAKE_SOURCE_DIR}/dep/recastnavigation/Detour/Include
     ${CMAKE_SOURCE_DIR}/dep/recastnavigation/Recast/Include
     ${CMAKE_SOURCE_DIR}/dep/g3dlite/include
@@ -126,6 +126,18 @@ if(USE_MODULES)
 		PRIVATE
 		modules)
     target_compile_definitions(scripts PRIVATE USE_MODULES)
+endif()
+
+if(PLAYERBOTS)
+    file(GLOB_RECURSE PLAYERBOTS_SUBDIRS LIST_DIRECTORIES true "${CMAKE_SOURCE_DIR}/modules/mod_playerbots/src/*")
+    set(PLAYERBOTS_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/modules/mod_playerbots/src")
+    foreach(SUBDIR ${PLAYERBOTS_SUBDIRS})
+        if(IS_DIRECTORY ${SUBDIR})
+            list(APPEND PLAYERBOTS_INCLUDE_DIRS ${SUBDIR})
+        endif()
+    endforeach()
+    target_include_directories(scripts PRIVATE ${PLAYERBOTS_INCLUDE_DIRS})
+    target_compile_definitions(scripts PRIVATE PLAYERBOTS)
 endif()
 
 if (ELUNA)

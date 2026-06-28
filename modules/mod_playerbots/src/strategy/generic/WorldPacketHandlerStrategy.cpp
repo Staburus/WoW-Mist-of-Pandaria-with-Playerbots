@@ -20,9 +20,17 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
 
     triggers.push_back(new TriggerNode("release spirit", NextAction::array(0, new NextAction("release", relevance), nullptr)));
     triggers.push_back(new TriggerNode("revive from corpse", NextAction::array(0, new NextAction("revive from corpse", relevance), nullptr)));
+
+    triggers.push_back(new TriggerNode("lfg proposal", NextAction::array(0, new NextAction("lfg accept", relevance), nullptr)));
+    triggers.push_back(new TriggerNode("lfg proposal active", NextAction::array(0, new NextAction("lfg accept", relevance), nullptr)));
+    triggers.push_back(new TriggerNode("lfg role check", NextAction::array(0, new NextAction("lfg role check", relevance), nullptr)));
+    triggers.push_back(new TriggerNode("lfg teleport", NextAction::array(0, new NextAction("lfg teleport", relevance), nullptr)));
 }
 
 WorldPacketHandlerStrategy::WorldPacketHandlerStrategy(PlayerbotAI* botAI) : PassTroughStrategy(botAI)
 {
     supported.push_back("uninvite");
+    supported.push_back("lfg role check");
+    supported.push_back("lfg teleport");
+    supported.push_back("lfg proposal");
 }

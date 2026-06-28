@@ -2,6 +2,7 @@
 #define _PLAYERBOT_RANDOMPLAYERBOTMGR_H
 
 #include "PlayerbotMgr.h"
+#include "Battleground.h"
 
 class CachedEvent
 {
@@ -23,6 +24,33 @@ public:
     uint32 lastChangeTime;
     uint32 validIn;
     std::string data;
+};
+
+struct BattlegroundInfo
+{
+    uint32 bgAllianceBotCount = 0;
+    uint32 bgAlliancePlayerCount = 0;
+    uint32 bgHordeBotCount = 0;
+    uint32 bgHordePlayerCount = 0;
+    uint32 bgInstanceCount = 0;
+    uint32 activeBgQueue = 0;
+
+    uint32 skirmishArenaBotCount = 0;
+    uint32 skirmishArenaPlayerCount = 0;
+    uint32 skirmishArenaInstanceCount = 0;
+    uint32 activeSkirmishArenaQueue = 0;
+
+    uint32 ratedArenaBotCount = 0;
+    uint32 ratedArenaPlayerCount = 0;
+    uint32 ratedArenaInstanceCount = 0;
+    uint32 activeRatedArenaQueue = 0;
+
+    uint32 ratedBgAllianceBotCount = 0;
+    uint32 ratedBgAlliancePlayerCount = 0;
+    uint32 ratedBgHordeBotCount = 0;
+    uint32 ratedBgHordePlayerCount = 0;
+    uint32 ratedBgInstanceCount = 0;
+    uint32 activeRatedBgQueue = 0;
 };
 
 class Player;
@@ -122,6 +150,13 @@ public:
     std::map<uint8, std::vector<ObjectGuid>>& AddclassCache() { return _addclassCache; };
     void PrepareTeleportCache();
     void RandomTeleportForLevel(Player* bot);
+    void CheckLfgQueue();
+    void CheckBgQueue();
+    const farm_spot* GetFarmZoneForPlayer(Player* player);
+    const city* GetCityForPlayer(Player* player);
+
+    std::map<TeamId, std::vector<uint32>> LfgDungeons;
+    std::map<uint32, std::map<uint32, BattlegroundInfo>> BattlegroundData;
 
 protected:
     void OnBotLoginInternal(Player* const bot) override;
@@ -131,19 +166,20 @@ private:
     uint32 AddRandomBots();
     bool ProcessBot(uint32 bot);
     void ScheduleRandomize(uint32 bot, uint32 time);
-    const farm_spot* GetFarmZoneForPlayer(Player* player);
-    const city* GetCityForPlayer(Player* player);
     uint32 GetEventValue(uint32 bot, std::string const event);
     std::string const GetEventData(uint32 bot, std::string const event);
     uint32 SetEventValue(uint32 bot, std::string const event, uint32 value, uint32 validIn, std::string const data = "");
 
 public:
+
     uint32 activeBots = 0;
 private:
     // pid values are set in constructor
     float _activityMod = 0.25;
     bool _isBotInitializing = true;
     time_t _playersCheckTimer;
+    time_t LfgCheckTimer = 0;
+    time_t BgCheckTimer = 0;
     typedef void (RandomPlayerbotMgr::* ConsoleCommandHandler)(Player*);
     std::vector<Player*> _players;
     uint32 _processTicks;

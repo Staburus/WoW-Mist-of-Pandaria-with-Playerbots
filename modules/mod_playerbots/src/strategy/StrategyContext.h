@@ -18,6 +18,8 @@
 #include "TankAssistStrategy.h"
 #include "ThreatStrategy.h"
 #include "HelloStrategy.h"
+#include "BattlegroundStrategy.h"
+#include "LfgStrategy.h"
 #include "RunawayStrategy.h"
 #include "RangedCombatStrategy.h"
 #include "StayStrategy.h"
@@ -42,6 +44,8 @@ public:
 
         creators["tank face"] = &StrategyContext::tank_face;
         creators["threat"] = &StrategyContext::threat;
+        creators["lfg"] = &StrategyContext::lfg;
+        creators["bg"] = &StrategyContext::bg;
         // -- temp
         creators["say hello"] = &StrategyContext::say_hello;
     }
@@ -65,6 +69,8 @@ private:
 
     static Strategy* tank_face(PlayerbotAI* botAI) { return new TankFaceStrategy(botAI); }
     static Strategy* threat(PlayerbotAI* botAI) { return new ThreatStrategy(botAI); }
+    static Strategy* lfg(PlayerbotAI* botAI) { return new LfgStrategy(botAI); }
+    static Strategy* bg(PlayerbotAI* botAI) { return new BGStrategy(botAI); }
 };
 
 class MovementStrategyContext : public NamedObjectContext<Strategy>

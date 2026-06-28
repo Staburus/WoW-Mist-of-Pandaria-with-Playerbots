@@ -15,6 +15,7 @@
 * with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "LfgActions.h"
 #include "PlayerbotAI.h"
 
 #include <cmath>
@@ -23,6 +24,9 @@
 #include <string>
 
 #include "AiFactory.h"
+#include "Battleground.h"
+#include "BattlegroundMgr.h"
+#include "BattlegroundQueue.h"
 #include "ChannelMgr.h"
 #include "CreatureAIImpl.h"
 #include "Engine.h"
@@ -142,10 +146,13 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     masterIncomingPacketHandlers.AddHandler(CMSG_GROUP_UNINVITE_GUID, "uninvite guid");
     masterIncomingPacketHandlers.AddHandler(CMSG_REPOP_REQUEST, "release spirit");
     masterIncomingPacketHandlers.AddHandler(CMSG_RECLAIM_CORPSE, "revive from corpse");
+    masterIncomingPacketHandlers.AddHandler(CMSG_LFG_TELEPORT, "lfg teleport");
 
     botOutgoingPacketHandlers.AddHandler(SMSG_LEVELUP_INFO, "levelup");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_INVITE, "group invite");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_DESTROYED, "group destroyed");
+    botOutgoingPacketHandlers.AddHandler(SMSG_LFG_ROLE_CHECK_UPDATE, "lfg role check");
+    botOutgoingPacketHandlers.AddHandler(SMSG_LFG_PROPOSAL_UPDATE, "lfg proposal");
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -207,11 +214,14 @@ uint32 PlayerbotAI::GetReactDelay()
         }
     }*/
 
-    // When in combat, return 5 times the base
+    // When in combat: per-bot personality (GUID-seeded 2.5x-7.5x) + per-tick random variance (±25%)
+    // This makes some bots react quickly and others slowly, and each tick varies slightly
     if (bot->IsInCombat() || _currentState == BOT_STATE_COMBAT)
     {
-        multiplier = 5.0f;
-        return base * multiplier;
+        float personalityMul = 2.5f + (float)(bot->GetGUID().GetCounter() % 11) * 0.5f; // 2.5 to 7.5
+        float variance = 0.75f + rand_norm() * 0.5f; // 0.75 to 1.25
+        uint32 delay = (uint32)(base * personalityMul * variance);
+        return std::max(200u, delay);
     }
 
     // When not resting, return 10-30 times the base
@@ -599,22 +609,18 @@ bool PlayerbotAI::AllowActive(ActivityType activityType)
         return true;
     }
 
-    //bool isLFG = false;
-    //if (group)
-    //{
-    //    if (sLFGMgr->GetState(group->GetGUID()) != lfg::LFG_STATE_NONE)
-    //    {
-    //        isLFG = true;
-    //    }
-    //}
-    //if (sLFGMgr->GetState(bot->GetGUID()) != lfg::LFG_STATE_NONE)
-    //{
-    //    isLFG = true;
-    //}
-    //if (isLFG)
-    //{
-    //    return true;
-    //}
+    // bot is in LFG queue — stay active
+    bool isLFG = false;
+    if (group)
+    {
+        if (sLFGMgr->GetActiveState(group->GetGUID()) != lfg::LFG_STATE_NONE)
+            isLFG = true;
+    }
+    if (sLFGMgr->GetActiveState(bot->GetGUID()) != lfg::LFG_STATE_NONE)
+        isLFG = true;
+
+    if (isLFG)
+        return true;
 
     //// HasFriend
     //if (sPlayerbotAIConfig->BotActiveAloneForceWhenIsFriend)
@@ -721,7 +727,7 @@ void PlayerbotAI::Reset(bool full)
     _aiObjectContext->GetValue<ObjectGuid>("pull target")->Set(ObjectGuid::Empty);
     //_aiObjectContext->GetValue<GuidPosition>("rpg target")->Set(GuidPosition());
     //_aiObjectContext->GetValue<LootObject>("loot target")->Set(LootObject());
-    //_aiObjectContext->GetValue<uint32>("lfg proposal")->Set(0);
+    _aiObjectContext->GetValue<uint32>("lfg proposal")->Set(0);
     bot->SetTarget(ObjectGuid::Empty);
 
     LastSpellCast& lastSpell = _aiObjectContext->GetValue<LastSpellCast&>("last spell cast")->Get();
@@ -1113,6 +1119,121 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 
         bot->GetSession()->HandleTimeSyncResp(packet);
         break;
+    }
+    case SMSG_LFG_ROLE_CHECK_UPDATE:
+    {
+        // Immediately respond to role check for random bots
+        if (sRandomPlayerbotMgr->IsRandomBot(bot))
+        {
+            Group* group = bot->GetGroup();
+            if (group)
+            {
+                // Determine role from spec
+                uint32 roles = lfg::PLAYER_ROLE_DAMAGE;
+                Specializations spec = AiFactory::GetPlayerSpecTab(bot);
+                switch (bot->GetClass())
+                {
+                    case CLASS_DRUID:
+                        if (spec == Specializations::SPEC_DRUID_RESTORATION) roles = lfg::PLAYER_ROLE_HEALER;
+                        else if (spec == Specializations::SPEC_DRUID_GUARDIAN) roles = lfg::PLAYER_ROLE_TANK;
+                        break;
+                    case CLASS_PALADIN:
+                        if (spec == Specializations::SPEC_PALADIN_PROTECTION) roles = lfg::PLAYER_ROLE_TANK;
+                        else if (spec == Specializations::SPEC_PALADIN_HOLY) roles = lfg::PLAYER_ROLE_HEALER;
+                        break;
+                    case CLASS_PRIEST:
+                        if (spec != Specializations::SPEC_PRIEST_SHADOW) roles = lfg::PLAYER_ROLE_HEALER;
+                        break;
+                    case CLASS_SHAMAN:
+                        if (spec == Specializations::SPEC_SHAMAN_RESTORATION) roles = lfg::PLAYER_ROLE_HEALER;
+                        break;
+                    case CLASS_WARRIOR:
+                        if (spec == Specializations::SPEC_WARRIOR_PROTECTION) roles = lfg::PLAYER_ROLE_TANK;
+                        break;
+                    case CLASS_DEATH_KNIGHT:
+                        if (spec == Specializations::SPEC_DEATH_KNIGHT_BLOOD) roles = lfg::PLAYER_ROLE_TANK;
+                        break;
+                    case CLASS_MONK:
+                        if (spec == Specializations::SPEC_MONK_BREWMASTER) roles = lfg::PLAYER_ROLE_TANK;
+                        else if (spec == Specializations::SPEC_MONK_MISTWEAVER) roles = lfg::PLAYER_ROLE_HEALER;
+                        break;
+                    default:
+                        break;
+                }
+                TC_LOG_INFO("playerbots", "Bot %s: auto-responding to LFG role check (role %u)",
+                    bot->GetName().c_str(), roles);
+                sLFGMgr->UpdateRoleCheck(group->GetGUID(), bot->GetGUID(), roles);
+                return;
+            }
+        }
+        botOutgoingPacketHandlers.AddPacket(packet);
+        return;
+    }
+    case SMSG_LFG_PROPOSAL_UPDATE:
+    {
+        // Immediately accept for random bots — bypass broken packet parser
+        if (sRandomPlayerbotMgr->IsRandomBot(bot) && !bot->isDead())
+        {
+            uint32 proposalId = sLFGMgr->GetActiveProposalId(bot->GetGUID());
+            if (proposalId)
+            {
+                uint32 alreadyAccepted = _aiObjectContext->GetValue<uint32>("lfg proposal")->Get();
+                if (alreadyAccepted == proposalId)
+                    return; // Already accepted this proposal, don't loop
+
+                TC_LOG_INFO("playerbots", "Bot %s: auto-accepting LFG proposal %u",
+                    bot->GetName().c_str(), proposalId);
+                _aiObjectContext->GetValue<uint32>("lfg proposal")->Set(proposalId);
+                sLFGMgr->UpdateProposal(proposalId, bot->GetGUID(), true);
+                return;
+            }
+        }
+
+        // Fallback for non-random bots: use packet parser
+        uint32 proposalId = 0;
+        if (ParseLfgProposalId(packet, proposalId) && proposalId)
+            _aiObjectContext->GetValue<uint32>("lfg proposal")->Set(proposalId);
+        botOutgoingPacketHandlers.AddPacket(packet);
+        return;
+    }
+    case SMSG_BATTLEFIELD_STATUS_NEEDCONFIRMATION:
+    {
+        if (sRandomPlayerbotMgr->IsRandomBot(bot))
+        {
+            for (uint8 i = 0; i < PLAYER_MAX_BATTLEGROUND_QUEUES; ++i)
+            {
+                BattlegroundQueueTypeId queueTypeId = bot->GetBattlegroundQueueTypeId(i);
+                if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
+                    continue;
+
+                BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+                GroupQueueInfo ginfo;
+                if (!bgQueue.GetPlayerGroupInfoData(bot->GetGUID(), &ginfo))
+                    continue;
+
+                if (ginfo.IsInvitedToBGInstanceGUID && !bot->InBattleground())
+                {
+                    BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+                    bool isMetaQueue = (bgTypeId == BATTLEGROUND_AA || bgTypeId == BATTLEGROUND_RB || bgTypeId == BATTLEGROUND_RATED_10_VS_10);
+                    Battleground* bg = sBattlegroundMgr->GetBattleground(
+                        ginfo.IsInvitedToBGInstanceGUID,
+                        isMetaQueue ? BATTLEGROUND_TYPE_NONE : bgTypeId);
+
+                    if (bg)
+                    {
+                        printf("[Playerbots] Bot %s: auto-accepting BG invite (instance %u)\n",
+                            bot->GetName().c_str(), ginfo.IsInvitedToBGInstanceGUID);
+                        fflush(stdout);
+
+                        bot->SetBattlegroundEntryPoint();
+                        sBattlegroundMgr->SendToBattleground(bot, ginfo.IsInvitedToBGInstanceGUID, bgTypeId);
+                        return;
+                    }
+                }
+            }
+        }
+        botOutgoingPacketHandlers.AddPacket(packet);
+        return;
     }
     default:
         botOutgoingPacketHandlers.AddPacket(packet);

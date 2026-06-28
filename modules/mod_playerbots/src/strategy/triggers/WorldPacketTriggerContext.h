@@ -23,6 +23,10 @@ public:
         creators["revive from corpse"] = &WorldPacketTriggerContext::revive_from_corpse;
 
         creators["levelup"] = &WorldPacketTriggerContext::levelup;
+
+        creators["lfg proposal"] = &WorldPacketTriggerContext::lfg_proposal;
+        creators["lfg role check"] = &WorldPacketTriggerContext::lfg_role_check;
+        creators["lfg teleport"] = &WorldPacketTriggerContext::lfg_teleport;
     }
 
 private:
@@ -35,6 +39,10 @@ private:
     static Trigger* revive_from_corpse(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "revive from corpse"); }
 
     static Trigger* levelup(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "levelup"); }
+
+    static Trigger* lfg_proposal(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "lfg proposal"); }
+    static Trigger* lfg_role_check(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "lfg role check"); }
+    static Trigger* lfg_teleport(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "lfg teleport"); }
 };
 
 #endif

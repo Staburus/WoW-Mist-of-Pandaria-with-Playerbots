@@ -567,6 +567,15 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         nonCombatEngine->addStrategiesNoInit("nc", "food", "chat", "follow", "default", "quest", "loot", "gather", "duel",
             "buff", "mount", "emote", nullptr);
     }
+
+    if (sRandomPlayerbotMgr->IsRandomBot(player) && !player->InBattleground())
+    {
+        if (sPlayerbotAIConfig->randomBotJoinLfg)
+            nonCombatEngine->addStrategy("lfg", false);
+        if (sPlayerbotAIConfig->randomBotJoinBG)
+            nonCombatEngine->addStrategy("bg", false);
+    }
+
     nonCombatEngine->addStrategy("say hello");
 }
 

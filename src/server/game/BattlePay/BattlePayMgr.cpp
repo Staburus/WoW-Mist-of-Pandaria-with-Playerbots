@@ -27,6 +27,11 @@
 #include "BattlePetMgr.h"
 #include "Realm.h"
 
+#ifdef PLAYERBOTS
+#include "BotFactory.h"
+#include "Playerbots.h"
+#endif
+
 #pragma execution_character_set("UTF-8")
 
 
@@ -580,7 +585,19 @@ void BattlePayMgr::SendBattlePayProductList(WorldSession* session)
         for (auto&& item : *items)
         {
             bool hasProduct = false;
-            if (product->Type == BATTLE_PAY_PRODUCT_TYPE_SERVICE)
+            if (product->Id == BATTLE_PAY_SERVICE_BOOST_60 || product->Id == BATTLE_PAY_SERVICE_BOOST_70 || product->Id == BATTLE_PAY_SERVICE_BOOST_85)
+            {
+                if (Player* player = session->GetPlayer())
+                {
+                    uint32 targetLevel = 0;
+                    if (product->Id == BATTLE_PAY_SERVICE_BOOST_60) targetLevel = 60;
+                    else if (product->Id == BATTLE_PAY_SERVICE_BOOST_70) targetLevel = 70;
+                    else if (product->Id == BATTLE_PAY_SERVICE_BOOST_85) targetLevel = 85;
+                    if (player->GetLevel() >= targetLevel)
+                        hasProduct = true;
+                }
+            }
+            else if (product->Type == BATTLE_PAY_PRODUCT_TYPE_SERVICE)
             {
                 if (product->Id == BATTLE_PAY_SERVICE_BOOST)
                     if (session->HasBoost())
@@ -950,6 +967,22 @@ void BattlePayMgr::SendBattlePayPurchaseUpdate(PurchaseInfo* purchase)
         if (product->Id == BATTLE_PAY_SERVICE_BOOST && purchase->GetSession()->HasBoost())
             validPurchase = false;
 
+        if (product->Id == BATTLE_PAY_SERVICE_BOOST_60 || product->Id == BATTLE_PAY_SERVICE_BOOST_70 || product->Id == BATTLE_PAY_SERVICE_BOOST_85)
+        {
+            Player* player = purchase->GetSession()->GetPlayer();
+            if (!player)
+                validPurchase = false;
+            else
+            {
+                uint32 targetLevel = 0;
+                if (product->Id == BATTLE_PAY_SERVICE_BOOST_60) targetLevel = 60;
+                else if (product->Id == BATTLE_PAY_SERVICE_BOOST_70) targetLevel = 70;
+                else if (product->Id == BATTLE_PAY_SERVICE_BOOST_85) targetLevel = 85;
+                if (player->GetLevel() >= targetLevel)
+                    validPurchase = false;
+            }
+        }
+
         uint32 serverToken = irand(1, 999999); // temp solution
         
         uint64 price = product->Price * BATTLE_PAY_CURRENCY_PRECISION;
@@ -1005,6 +1038,49 @@ void BattlePayMgr::SendBattlePayPurchaseUpdate(PurchaseInfo* purchase)
                     SetBoosting(purchase->GetSession(), purchase->GetSession()->GetAccountId(), true);
                     SendBattlePayDistributionUpdate(purchase->GetSession(), BATTLE_PAY_SERVICE_BOOST, CHARACTER_BOOST_ALLOW);
                 }
+
+        }
+        else if (product->Id == BATTLE_PAY_SERVICE_BOOST_60 || product->Id == BATTLE_PAY_SERVICE_BOOST_70 || product->Id == BATTLE_PAY_SERVICE_BOOST_85)
+        {
+            Player* player = purchase->GetSession()->GetPlayer();
+            if (player)
+            {
+                uint32 targetLevel = 0;
+                if (product->Id == BATTLE_PAY_SERVICE_BOOST_60) targetLevel = 60;
+                else if (product->Id == BATTLE_PAY_SERVICE_BOOST_70) targetLevel = 70;
+                else if (product->Id == BATTLE_PAY_SERVICE_BOOST_85) targetLevel = 85;
+
+                if (player->GetLevel() < targetLevel)
+                {
+                    player->GiveLevel(targetLevel);
+                    player->InitTalentForLevel();
+                    player->SetUInt32Value(PLAYER_FIELD_XP, 0);
+
+                    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+                    {
+                        if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
+                            continue;
+                        if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                            player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+                    }
+
+#ifdef PLAYERBOTS
+                    {
+                        BotFactory factory(player, targetLevel);
+                        factory.InitEquipment(false, true);
+                    }
+#endif
+
+                    uint32 gold = 0;
+                    if (targetLevel == 60) gold = 100;
+                    else if (targetLevel == 70) gold = 500;
+                    else if (targetLevel == 85) gold = 2000;
+                    if (gold > 0)
+                        player->ModifyMoney(gold * GOLD);
+
+                    player->SaveToDB();
+                }
+            }
         }
         else if (product->Type == BATTLE_PAY_PRODUCT_TYPE_ITEM)
         {

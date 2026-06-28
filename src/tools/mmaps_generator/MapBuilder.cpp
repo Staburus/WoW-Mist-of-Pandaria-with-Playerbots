@@ -29,7 +29,7 @@
 bool DisableMgr::IsDisabledFor(DisableType type, uint32 entry, Unit const* unit, uint8 flags) { return false; }
 
 #define MMAP_MAGIC 0x4d4d4150   // 'MMAP'
-#define MMAP_VERSION 7
+#define MMAP_VERSION 1084647014
 
 namespace MMAP
 {

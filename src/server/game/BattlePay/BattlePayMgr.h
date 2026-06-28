@@ -158,6 +158,9 @@ enum BattlePayServices
 {
     BATTLE_PAY_SERVICE_BOOST                  = 83,
     BATTLE_PAY_SERVICE_PREMIUM                = 84,
+    BATTLE_PAY_SERVICE_BOOST_60               = 200,
+    BATTLE_PAY_SERVICE_BOOST_70               = 201,
+    BATTLE_PAY_SERVICE_BOOST_85               = 202,
 };
 
 enum BattlePayChoiceType
